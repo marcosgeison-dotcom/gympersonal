@@ -1,36 +1,41 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Users, Plus, Share2, Search, Trophy, X, Building2, Check } from "lucide-react";
+import { Users, Plus, Share2, Trophy, X, Building2, Check } from "lucide-react";
 import { Header } from "./Workout";
-import { LEAGUES, MY_LEAGUE, USER } from "../mock";
+import { Loader } from "./Dashboard";
+import api from "../api";
 
 export default function Leagues() {
   const nav = useNavigate();
-  const [leagues, setLeagues] = useState(LEAGUES);
+  const [user, setUser] = useState(null);
+  const [leagues, setLeagues] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
 
-  const join = (id) => setLeagues((prev) => prev.map((l) => l.id === id ? { ...l, joined: true, members: l.members + 1 } : l));
+  const load = () => api.getLeagues().then(setLeagues);
+  useEffect(() => { api.getUser().then(setUser); load(); }, []);
+  if (!leagues || !user) return <div style={{ padding: 16 }}><Loader /></div>;
 
-  const create = () => {
+  const myMember = leagues.find((l) => l.joined);
+
+  const join = async (id) => { await api.joinLeague(id); load(); };
+  const create = async () => {
     if (!newName.trim()) return;
-    const l = { id: "new" + Date.now(), name: newName, gym: USER.gym, members: 1, emoji: "🚀", neon: "#39ff14", joined: true };
-    setLeagues((prev) => [l, ...prev]);
-    setNewName(""); setCreateOpen(false);
+    await api.createLeague(newName);
+    setNewName(""); setCreateOpen(false); load();
   };
 
   return (
     <div className="animate-slide-up" style={{ padding: "8px 16px 24px" }}>
       <Header title="LIGAS" onBack={() => nav("/")} />
 
-      {/* gym banner */}
       <div className="card-surface" style={{ padding: 14, marginBottom: 16, display: "flex", alignItems: "center", gap: 12, border: "1px solid rgba(124,92,255,0.3)" }}>
         <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(124,92,255,0.16)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <Building2 size={22} className="neon-text" />
         </div>
         <div style={{ flex: 1 }}>
           <div className="term-label">SUA ACADEMIA</div>
-          <div className="font-display" style={{ fontWeight: 700, fontSize: 16 }}>{USER.gym}</div>
+          <div className="font-display" style={{ fontWeight: 700, fontSize: 16 }}>{user.gym}</div>
         </div>
         <div style={{ textAlign: "center" }}>
           <div className="font-display neon-text" style={{ fontWeight: 700, fontSize: 18 }}>{leagues.length}</div>
@@ -38,34 +43,28 @@ export default function Leagues() {
         </div>
       </div>
 
-      {/* my league highlight */}
-      <button onClick={() => nav(`/league/${MY_LEAGUE.id}`)} className="card-surface" style={{
-        width: "100%", textAlign: "left", cursor: "pointer", padding: 0, overflow: "hidden", marginBottom: 18,
-        border: "1px solid rgba(124,92,255,0.5)",
-      }}>
-        <div style={{ padding: 16, background: "linear-gradient(145deg,rgba(124,92,255,0.18),transparent)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontSize: 30 }}>{MY_LEAGUE.emoji}</div>
-            <div style={{ flex: 1 }}>
-              <div className="term-label neon-text">MINHA LIGA</div>
-              <div className="font-display" style={{ fontWeight: 700, fontSize: 19 }}>{MY_LEAGUE.name}</div>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>{MY_LEAGUE.members} membros ativos</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div className="term-label">SEU RANK</div>
-              <div className="font-display neon-text" style={{ fontWeight: 700, fontSize: 26 }}>#{MY_LEAGUE.myRank}</div>
+      {myMember && (
+        <button onClick={() => nav(`/league/${myMember.id}`)} className="card-surface" style={{ width: "100%", textAlign: "left", cursor: "pointer", padding: 0, overflow: "hidden", marginBottom: 18, border: "1px solid rgba(124,92,255,0.5)" }}>
+          <div style={{ padding: 16, background: "linear-gradient(145deg,rgba(124,92,255,0.18),transparent)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontSize: 30 }}>{myMember.emoji}</div>
+              <div style={{ flex: 1 }}>
+                <div className="term-label neon-text">MINHA LIGA</div>
+                <div className="font-display" style={{ fontWeight: 700, fontSize: 19 }}>{myMember.name}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)" }}>{myMember.members} membros ativos</div>
+              </div>
+              <Trophy size={26} color="#7c5cff" />
             </div>
           </div>
-        </div>
-      </button>
+        </button>
+      )}
 
-      {/* actions */}
       <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <button onClick={() => setCreateOpen(true)} style={actBtn}><Plus size={18} /> Criar Liga</button>
         <button style={{ ...actBtn, background: "#1c1c22", color: "#c9c9d4", boxShadow: "none", border: "1px solid var(--border)" }}><Share2 size={18} /> Convidar</button>
       </div>
 
-      <div className="term-label" style={{ marginBottom: 10 }}>LIGAS DA {USER.gym.toUpperCase()}</div>
+      <div className="term-label" style={{ marginBottom: 10 }}>LIGAS DA {user.gym.toUpperCase()}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {leagues.map((l) => (
           <div key={l.id} className="card-surface" style={{ padding: 14, display: "flex", alignItems: "center", gap: 12 }}>
@@ -76,9 +75,7 @@ export default function Leagues() {
                 <Users size={12} /> {l.members} membros
               </div>
             </div>
-            {l.joined
-              ? <span className="term-label" style={{ color: "#39ff14", display: "flex", alignItems: "center", gap: 4 }}><Check size={13} /> MEMBRO</span>
-              : <button onClick={() => join(l.id)} style={{ ...actBtn, width: "auto", padding: "8px 16px", fontSize: 13 }}>Entrar</button>}
+            {l.joined ? <span className="term-label" style={{ color: "#39ff14", display: "flex", alignItems: "center", gap: 4 }}><Check size={13} /> MEMBRO</span> : <button onClick={() => join(l.id)} style={{ ...actBtn, width: "auto", padding: "8px 16px", fontSize: 13 }}>Entrar</button>}
           </div>
         ))}
       </div>
@@ -93,7 +90,7 @@ export default function Leagues() {
             <div className="term-label" style={{ marginBottom: 5 }}>NOME DA LIGA</div>
             <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Ex: Monstros do Ferro" style={inp} />
             <div className="font-mono-t" style={{ fontSize: 11, color: "var(--muted)", margin: "12px 0" }}>
-              <Building2 size={12} style={{ display: "inline", marginRight: 4 }} /> Liga vinculada à {USER.gym}. Membros competem por treinos, calorias e streaks.
+              <Building2 size={12} style={{ display: "inline", marginRight: 4 }} /> Liga vinculada à {user.gym}. Membros competem por treinos, calorias e streaks.
             </div>
             <button onClick={create} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", color: "#fff", fontFamily: "Rajdhani", fontWeight: 700, fontSize: 15 }}>Criar & Compartilhar Convite</button>
           </div>

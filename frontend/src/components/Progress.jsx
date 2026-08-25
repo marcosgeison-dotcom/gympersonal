@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { TrendingUp, TrendingDown, AlertTriangle, Plus, Ruler, Activity, X } from "lucide-react";
+import { TrendingUp, TrendingDown, AlertTriangle, Plus, Ruler, X } from "lucide-react";
 import { Header } from "./Workout";
-import { MEASUREMENTS, ONE_RM, PLATEAUS, VOLUME_HISTORY } from "../mock";
+import { Loader } from "./Dashboard";
+import api from "../api";
 
 function Spark({ data, color }) {
   const max = Math.max(...data), min = Math.min(...data);
@@ -15,20 +16,36 @@ function Spark({ data, color }) {
   );
 }
 
+const FIELD_MAP = { "Peso (kg)": "peso", "Gordura (%)": "gordura", "Cintura (cm)": "cintura", "Braço (cm)": "braco" };
+
 export default function Progress() {
   const nav = useNavigate();
+  const [data, setData] = useState(null);
   const [modal, setModal] = useState(false);
-  const maxVol = Math.max(...VOLUME_HISTORY.map((v) => v.volume));
+  const [form, setForm] = useState({});
+
+  const load = () => api.getProgress().then(setData);
+  useEffect(() => { load(); }, []);
+  if (!data) return <div style={{ padding: 16 }}><Loader /></div>;
+
+  const { measurements, one_rm, plateaus, volume_history } = data;
+  const maxVol = Math.max(...volume_history.map((v) => v.volume));
+
+  const save = async () => {
+    const payload = {};
+    Object.entries(form).forEach(([k, v]) => { if (v) payload[FIELD_MAP[k]] = parseFloat(v); });
+    if (Object.keys(payload).length) { const upd = await api.addMeasurement(payload); setData((d) => ({ ...d, measurements: upd })); }
+    setForm({}); setModal(false);
+  };
 
   return (
     <div className="animate-slide-up" style={{ padding: "8px 16px 24px" }}>
       <Header title="PROGRESSO" onBack={() => nav("/")}
         right={<button onClick={() => setModal(true)} style={{ background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", border: "none", borderRadius: 12, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 14px rgba(124,92,255,0.4)" }}><Plus size={20} color="#fff" /></button>} />
 
-      {/* measurements */}
       <div className="term-label" style={{ marginBottom: 10 }}>MEDIDAS CORPORAIS</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
-        {MEASUREMENTS.map((m) => {
+        {measurements.map((m) => {
           const up = m.delta > 0;
           const good = m.label === "Braço" ? up : !up;
           const c = good ? "#39ff14" : "#ef4444";
@@ -48,29 +65,23 @@ export default function Progress() {
         })}
       </div>
 
-      {/* volume chart */}
       <div className="term-label" style={{ marginBottom: 10 }}>VOLUME SEMANAL (TON)</div>
       <div className="card-surface" style={{ padding: 16, marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", height: 120, gap: 8 }}>
-          {VOLUME_HISTORY.map((v, i) => (
+          {volume_history.map((v, i) => (
             <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
               <div className="font-mono-t" style={{ fontSize: 9, color: "#c9c9d4" }}>{v.volume}</div>
-              <div style={{
-                width: "100%", height: `${(v.volume / maxVol) * 90}px`, borderRadius: 6,
-                background: i === VOLUME_HISTORY.length - 1 ? "linear-gradient(180deg,#7c5cff,#5b3ee0)" : "#2a2a32",
-                boxShadow: i === VOLUME_HISTORY.length - 1 ? "0 0 14px rgba(124,92,255,0.6)" : "none",
-              }} />
+              <div style={{ width: "100%", height: `${(v.volume / maxVol) * 90}px`, borderRadius: 6, background: i === volume_history.length - 1 ? "linear-gradient(180deg,#7c5cff,#5b3ee0)" : "#2a2a32", boxShadow: i === volume_history.length - 1 ? "0 0 14px rgba(124,92,255,0.6)" : "none" }} />
               <div className="term-label" style={{ fontSize: 9 }}>{v.week}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 1RM */}
       <div className="term-label" style={{ marginBottom: 10 }}>1RM ESTIMADO</div>
       <div className="card-surface" style={{ padding: 6, marginBottom: 18 }}>
-        {ONE_RM.map((r, i) => (
-          <div key={r.exercise} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < ONE_RM.length - 1 ? "1px solid var(--border)" : "none" }}>
+        {one_rm.map((r, i) => (
+          <div key={r.exercise} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 12px", borderBottom: i < one_rm.length - 1 ? "1px solid var(--border)" : "none" }}>
             <span style={{ fontSize: 14, fontWeight: 500 }}>{r.exercise}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <span className="font-display" style={{ fontWeight: 700, fontSize: 18 }}>{r.value} <span style={{ fontSize: 11, color: "var(--muted)" }}>{r.unit}</span></span>
@@ -80,10 +91,9 @@ export default function Progress() {
         ))}
       </div>
 
-      {/* plateaus */}
       <div className="term-label" style={{ marginBottom: 10, color: "#f59e0b" }}>⚠ PLATÔS DETECTADOS</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {PLATEAUS.map((p) => (
+        {plateaus.map((p) => (
           <div key={p.exercise} className="card-surface" style={{ padding: 14, border: "1px solid rgba(245,158,11,0.3)", display: "flex", alignItems: "center", gap: 12 }}>
             <AlertTriangle size={22} color="#f59e0b" />
             <div style={{ flex: 1 }}>
@@ -102,13 +112,13 @@ export default function Progress() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Ruler size={18} className="neon-text" /><span className="font-display" style={{ fontWeight: 700, fontSize: 18 }}>Registrar Medidas</span></div>
               <button onClick={() => setModal(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} color="var(--muted)" /></button>
             </div>
-            {["Peso (kg)", "Gordura (%)", "Cintura (cm)", "Braço (cm)"].map((f) => (
+            {Object.keys(FIELD_MAP).map((f) => (
               <div key={f} style={{ marginBottom: 12 }}>
                 <div className="term-label" style={{ marginBottom: 5 }}>{f}</div>
-                <input type="number" placeholder="0" style={inp} />
+                <input type="number" value={form[f] || ""} onChange={(e) => setForm({ ...form, [f]: e.target.value })} placeholder="0" style={inp} />
               </div>
             ))}
-            <button onClick={() => setModal(false)} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", color: "#fff", fontFamily: "Rajdhani", fontWeight: 700, fontSize: 15, marginTop: 4 }}>Salvar Medidas</button>
+            <button onClick={save} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", color: "#fff", fontFamily: "Rajdhani", fontWeight: 700, fontSize: 15, marginTop: 4 }}>Salvar Medidas</button>
           </div>
         </div>
       )}

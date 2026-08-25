@@ -101,3 +101,108 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Gym Personal App (clone from APK). Etapa 1 & 2 backend: simplified single-user (u_001) FastAPI + MongoDB with seeding. Features: user/profile, dashboard, workouts + performance logging, exercise library, progress (measurements/1RM/plateaus/volume), and multiplayer Leagues per gym with weekly/monthly ranking by workouts, calories, streaks."
+
+backend:
+  - task: "User & Profile endpoints (/user/me, /user/trainer-style, /fitness-profile GET+PUT, /trainer-styles)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Seeded demo user u_001. PUT trainer-style and fitness-profile do partial updates."
+        -working: true
+        -agent: "testing"
+        -comment: "All 5 endpoints tested successfully. GET /api/user/me returns u_001 (Rafael Souza, IronCore Academia). PUT /api/user/trainer-style updates to t2. GET /api/fitness-profile returns profile. PUT /api/fitness-profile partial update to weight=83.0 persists correctly. GET /api/trainer-styles returns 4 styles."
+  - task: "Dashboard aggregate (/dashboard) + challenges + achievements"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Returns user, stats, daily_tip, today_workout, top-3 challenges, my_league snippet with computed my_rank."
+        -working: true
+        -agent: "testing"
+        -comment: "All endpoints tested successfully. GET /api/challenges returns 4 challenges. GET /api/achievements returns 6 achievements. GET /api/dashboard returns all required keys (user, stats, daily_tip, today_workout, challenges with 3 items, my_league with my_rank not null)."
+  - task: "Workout endpoints (/workout/today, /workout/plans, /workout/complete, /workout/performance, /exercises)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "complete increments xp/stats and league weekly/monthly metrics. performance logs sets. exercises supports muscle & q filters."
+        -working: true
+        -agent: "testing"
+        -comment: "All 7 endpoints tested successfully. GET /api/workout/today returns workout with 5 exercises. GET /api/workout/plans returns 3 plans. POST /api/workout/complete returns xp_gained=280 and correctly increments workouts_this_week by 1 and calories_week by 480. POST /api/workout/performance logs sets successfully. GET /api/exercises returns 10 items. Filtering by muscle=Peito works. Search with q=agacha finds 'Agachamento Livre'."
+  - task: "Progress endpoints (/progress, /measurements POST)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "measurements POST recomputes delta and appends to history (max 5)."
+        -working: true
+        -agent: "testing"
+        -comment: "Both endpoints tested successfully. GET /api/progress returns measurements(4), one_rm(4), plateaus(2), volume_history(6). POST /api/measurements with peso=81.9 correctly updates Peso measurement value to 81.9 with recomputed delta and appended history."
+  - task: "Leagues multiplayer (/leagues list+create+join+detail, /leagues/{id}/ranking metric+period)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Ranking supports metric=workouts|calories|streak and period=weekly|monthly. Join adds member with metrics + increments count."
+        -working: true
+        -agent: "testing"
+        -comment: "All 7 league endpoints tested successfully. GET /api/leagues returns 4 leagues with lg1 joined=true. GET /api/leagues/lg1 returns league detail. GET /api/leagues/lg1/ranking tested with metric=workouts&period=weekly (sorted desc by workouts_week), metric=calories&period=monthly (sorted desc by calories_month), and metric=streak (sorted desc by streak). Rafael (is_me=true) present in all rankings. POST /api/leagues creates 'Test Squad' with joined=true. POST /api/leagues/lg2/join successfully joins and increments members count."
+
+frontend:
+  - task: "Frontend API integration (Etapa 1&2)"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/api.js + components"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Wired Dashboard, Workout, Progress, Leagues, LeagueDetail, Profile, Library to real API via src/api.js. Chat remains MOCK (AI = Etapa 3). Backend 24/24 passed. Awaiting user permission for frontend automated testing."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Etapas 1&2 backend implemented with startup seeding (u_001). Please test all /api endpoints. Key flows: GET /api/dashboard, /api/workout/today, POST /api/workout/complete (should bump stats), POST /api/workout/performance, GET /api/progress, POST /api/measurements, GET /api/leagues, POST /api/leagues + join, GET /api/leagues/lg1/ranking with metric/period combos. All prefixed with /api."
+    -agent: "testing"
+    -message: "✅ ALL BACKEND TESTS PASSED (24/24). Comprehensive testing completed for all Etapas 1&2 endpoints. All user/profile, dashboard, workout, exercise, progress, and leagues endpoints working correctly. Data seeding successful. Stats increments verified. Ranking sorting verified for all metric/period combinations. No errors or issues found. Backend is production-ready."
