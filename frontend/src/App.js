@@ -5,6 +5,7 @@ import { Home, Dumbbell, TrendingUp, Trophy, User, MessageCircle, Wifi, Signal, 
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./components/Login";
+import AuthCallback from "./components/AuthCallback";
 import Splash from "./components/Splash";
 import Assessment from "./components/Assessment";
 import Dashboard from "./components/Dashboard";
@@ -106,7 +107,13 @@ function AuthedApp() {
 }
 
 function Content() {
+  const location = useLocation();
   const { user, loading } = useAuth();
+
+  // Process OAuth callback FIRST (synchronously during render) to avoid race conditions
+  if (location.hash?.includes("session_id=")) {
+    return <div className="phone-scroll no-scrollbar"><AuthCallback /></div>;
+  }
   if (loading) return <FullLoader />;
   if (!user) return <div className="phone-scroll no-scrollbar"><Login /></div>;
   if (!user.assessment_done) return <div className="phone-scroll no-scrollbar"><Assessment /></div>;

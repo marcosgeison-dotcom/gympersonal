@@ -108,10 +108,6 @@ let webpackConfig = {
 };
 
 webpackConfig.devServer = (devServerConfig) => {
-  // Allow the preview's external hostname (served through a proxy that changes
-  // whenever the environment is recreated) and bind to all interfaces.
-  devServerConfig.allowedHosts = "all";
-  devServerConfig.host = "0.0.0.0";
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
     const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
