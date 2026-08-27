@@ -18,14 +18,22 @@ Recriar o app "Gym Personal" a partir de APK anexado. Clone pixel-perfect com es
 ## Implementado (histórico)
 - 2026-06: Etapas 1&2 — backend completo (user/profile, dashboard, workouts, progresso, ligas com ranking metric=workouts|calories|streak, period=weekly|monthly). Testado 24/24.
 - 2026-06: Integração frontend↔backend de todas as telas (exceto Chat IA = mock).
-- 2026-06 (esta sessão): Emergent Google Auth + isolamento multiusuário TESTADO e aprovado (23/23, /app/test_reports/iteration_1.json). Correções: /api/exercises agora exige auth; /api/auth/session normaliza erros de rede para 401.
+- 2026-06: Emergent Google Auth + isolamento multiusuário TESTADO (23/23, iteration_1.json).
+- 2026-06 (custo aprovado 40 créditos): Revisão geral + IA real + extras — TESTADO 100% (iteration_2.json: backend 10/10 + regressão 23/23, frontend 15/15):
+  - Treinador IA real: POST /api/chat (GPT-5.5 streaming via Emergent LLM Key, histórico em chat_messages, personalidade = trainer_style), GET /api/chat/history.
+  - Geração de plano IA real: POST /api/workout/generate-plan (JSON → substitui today_workout + cria plano ativo).
+  - Funções reativadas: Treino Emergencial (GET /api/workout/emergency), Ativar plano (POST /api/workout/plans/{id}/activate), Atualizar Perfil Fitness + botão settings (modal), streak real no workout/complete (incrementa/reseta, weekly_days, challenges c1-c3, conquistas a1-a3), guard anti duplo-clique 60s.
+  - Convites de liga: GET /api/leagues/{id}/invite (código 6 chars), POST /api/leagues/join-by-code; modal com copiar/compartilhar/entrar com código.
+  - Alerta de streak: dashboard retorna streak_at_risk; banner motivacional com botão Treinar.
+  - Compartilhar Conquista: card PNG neon gerado via canvas (ShareCard.jsx), navigator.share + fallback download.
+  - Splash screen só com a logo (1.8s).
+  - Avaliação Profissional no 1º login (3 passos): baseline de medidas, weekly_goal, challenge c1 parametrizado, conquista "Avaliação Pro"; gate em App.js via user.assessment_done.
 
 ## Backlog Priorizado
-- P0 — Etapa 3: IA real via Emergent LLM Key. "Chat Treinador IA" e "Gerar plano com IA" são MOCK no frontend (Chat.jsx). Implementar endpoints LLM no backend (usar integration_expert + emergentintegrations; incluir session_id no chat multi-turno).
-- P1 — Convites de liga: gerar link/código de convite para amigos entrarem na liga da academia.
-- P2 — Melhorias apontadas pelo teste: dedup de user_sessions em logins repetidos; validar membership antes de expor ranking de liga; idempotência em /api/workout/complete.
+- P1 — Notificações push/lembretes de treino (streak alert já existe in-app).
+- P2 — Melhorias: rotação/expiração de código de convite; arquivar planos IA antigos; dedup de user_sessions; refatorar server.py (~800 linhas) em módulos; Chat: structured output p/ generate-plan.
 
 ## Notas Técnicas
 - seed_global usa flag "v2" — ao alterar seeds globais, bump para v3.
-- Teste de regressão de auth: /app/backend/tests/test_auth_and_isolation.py (auto-limpa).
-- Google Auth é fluxo externo — não há senhas; testes simulam sessão inserindo docs em users + user_sessions e usando Bearer token.
+- Testes de regressão: /app/backend/tests/test_auth_and_isolation.py (23) e /app/backend/tests/test_new_features.py (10); seed frontend: /app/tests/seed_frontend_user.py (cookie session_token no Playwright).
+- Google Auth é fluxo externo — sem senhas; EMERGENT_LLM_KEY em backend/.env.

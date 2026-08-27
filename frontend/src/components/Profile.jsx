@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings, LogOut, Award, Ruler, Target, MapPin, Check, Palette, Dumbbell } from "lucide-react";
+import { Settings, LogOut, Award, Ruler, Target, MapPin, Check, Palette, Dumbbell, X, Loader2 } from "lucide-react";
 import { Flame, Zap, Trophy, Medal } from "lucide-react";
 import { Header } from "./Workout";
 import { Loader } from "./Dashboard";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 
-const ICONS = { flame: Flame, zap: Zap, trophy: Trophy, dumbbell: Dumbbell, medal: Medal };
+const ICONS = { flame: Flame, zap: Zap, trophy: Trophy, dumbbell: Dumbbell, medal: Medal, target: Target };
 
 export default function Profile() {
   const nav = useNavigate();
@@ -17,6 +17,15 @@ export default function Profile() {
   const [styles, setStyles] = useState([]);
   const [achievements, setAchievements] = useState([]);
   const [style, setStyle] = useState(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && setEditOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     api.getUser().then((u) => { setUser(u); setStyle(u.trainer_style); });
@@ -30,10 +39,30 @@ export default function Profile() {
   const xpPct = Math.round((user.xp / user.xp_to_next) * 100);
   const pickStyle = (id) => { setStyle(id); api.setTrainerStyle(id).catch(console.error); };
 
+  const openEdit = () => {
+    setForm({ weight: profile.weight, height: profile.height, body_fat: profile.body_fat, waist: profile.waist, goal: profile.goal });
+    setEditOpen(true);
+  };
+  const saveProfile = async () => {
+    setSaving(true);
+    try {
+      const p = await api.updateProfile({
+        weight: form.weight ? parseFloat(form.weight) : null,
+        height: form.height ? parseFloat(form.height) : null,
+        body_fat: form.body_fat ? parseFloat(form.body_fat) : null,
+        waist: form.waist ? parseFloat(form.waist) : null,
+        goal: form.goal || null,
+      });
+      setProfile(p);
+      setEditOpen(false);
+    } catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
   return (
     <div className="animate-slide-up" style={{ padding: "8px 16px 24px" }}>
       <Header title="PERFIL" onBack={() => nav("/")}
-        right={<button style={{ background: "#1c1c22", border: "1px solid var(--border)", borderRadius: 12, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Settings size={18} color="#fff" /></button>} />
+        right={<button data-testid="settings-btn" onClick={openEdit} style={{ background: "#1c1c22", border: "1px solid var(--border)", borderRadius: 12, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Settings size={18} color="#fff" /></button>} />
 
       <div className="card-surface" style={{ padding: 20, textAlign: "center", marginBottom: 16, background: "linear-gradient(160deg,rgba(124,92,255,0.14),transparent)" }}>
         <img src={user.avatar} alt="" style={{ width: 84, height: 84, borderRadius: 24, objectFit: "cover", border: "3px solid rgba(124,92,255,0.6)", marginBottom: 10 }} />
@@ -67,7 +96,7 @@ export default function Profile() {
           <Row label="Local" value={profile.place} />
         </div>
       </div>
-      <button style={{ width: "100%", padding: "12px 0", borderRadius: 14, background: "#1c1c22", color: "#c9c9d4", border: "1px solid var(--border)", cursor: "pointer", fontFamily: "Rajdhani", fontWeight: 600, fontSize: 14, marginBottom: 18 }}>Atualizar Perfil Fitness</button>
+      <button data-testid="edit-profile-btn" onClick={openEdit} style={{ width: "100%", padding: "12px 0", borderRadius: 14, background: "#1c1c22", color: "#c9c9d4", border: "1px solid var(--border)", cursor: "pointer", fontFamily: "Rajdhani", fontWeight: 600, fontSize: 14, marginBottom: 18 }}>Atualizar Perfil Fitness</button>
 
       <div className="term-label" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}><Palette size={13} className="neon-text" /> ESTILO DO TREINADOR</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
@@ -104,6 +133,38 @@ export default function Profile() {
       <button onClick={logout} style={{ width: "100%", padding: "13px 0", borderRadius: 14, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer", fontFamily: "Rajdhani", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <LogOut size={18} /> Sair da Conta
       </button>
+
+      {editOpen && (
+        <div onClick={() => setEditOpen(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16, zIndex: 60 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card-surface animate-slide-up" data-testid="edit-profile-modal" style={{ width: "100%", maxWidth: 360, padding: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Ruler size={18} className="neon-text" /><span className="font-display" style={{ fontWeight: 700, fontSize: 18 }}>Atualizar Perfil Fitness</span></div>
+              <button onClick={() => setEditOpen(false)} style={{ background: "none", border: "none", cursor: "pointer" }}><X size={20} color="var(--muted)" /></button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <EditNum label="PESO (KG)" v={form.weight} onC={(v) => setForm({ ...form, weight: v })} tid="edit-weight-input" />
+              <EditNum label="ALTURA (CM)" v={form.height} onC={(v) => setForm({ ...form, height: v })} tid="edit-height-input" />
+              <EditNum label="GORDURA (%)" v={form.body_fat} onC={(v) => setForm({ ...form, body_fat: v })} tid="edit-bodyfat-input" />
+              <EditNum label="CINTURA (CM)" v={form.waist} onC={(v) => setForm({ ...form, waist: v })} tid="edit-waist-input" />
+            </div>
+            <div className="term-label" style={{ marginBottom: 5 }}>OBJETIVO</div>
+            <input data-testid="edit-goal-input" value={form.goal || ""} onChange={(e) => setForm({ ...form, goal: e.target.value })} style={{ width: "100%", padding: "11px 14px", borderRadius: 12, background: "#1c1c22", border: "1px solid var(--border)", color: "#fff", fontSize: 14, outline: "none", marginBottom: 14 }} />
+            <button data-testid="save-profile-btn" onClick={saveProfile} disabled={saving} style={{ width: "100%", padding: "13px 0", borderRadius: 14, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", color: "#fff", fontFamily: "Rajdhani", fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {saving ? <Loader2 size={17} style={{ animation: "spin 1s linear infinite" }} /> : <Check size={17} />} Salvar Alterações
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditNum({ label, v, onC, tid }) {
+  return (
+    <div>
+      <div className="term-label" style={{ marginBottom: 4, fontSize: 9 }}>{label}</div>
+      <input data-testid={tid} type="number" inputMode="decimal" value={v ?? ""} onChange={(e) => onC(e.target.value)}
+        style={{ width: "100%", padding: "10px 12px", borderRadius: 12, background: "#1c1c22", border: "1px solid var(--border)", color: "#fff", fontSize: 15, outline: "none" }} />
     </div>
   );
 }

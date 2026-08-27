@@ -1,0 +1,49 @@
+{
+  "summary": "Full-stack testing of new features: AI chat streaming, plan generation, emergency workout, plan activate, league invite codes + join-by-code, workout/complete streak logic + streak_at_risk, professional assessment gate, splash screen, share achievement PNG, and profile modal. Backend: 10/10 pytest passed (new suite). Frontend: 15/15 Playwright checks passed end-to-end against the preview URL with real IA responses. All critical flows are wired correctly to the backend.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/workout/complete", "issue": "Still not idempotent: if the user clicks 'Finalizar Treino' twice on same day, streak stays at 1 (good) but workouts_this_week, calories_week, challenges progress and total_workouts all keep incrementing. Consider gating by last_workout_date == today."},
+      {"endpoint": "POST /api/workout/generate-plan", "issue": "No cap on how many AI plans a user can accumulate. Each call inserts a new plan doc — over time /api/workout/plans grows unbounded. Consider archiving old ai=true plans."},
+      {"endpoint": "GET /api/leagues/{id}/invite", "issue": "Code is 6 hex chars uppercase (uuid4 slice). No expiry, no rotation endpoint. Acceptable for MVP but flag for future."},
+      {"endpoint": "POST /api/chat", "issue": "system_message includes raw history via string interpolation; long histories could blow past model context. The endpoint already truncates to last 10 messages though."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Profile edit modal", "issue": "Modal cannot be closed via Escape key (only via X icon or clicking backdrop). Minor UX inconsistency but not blocking.", "selector": "[data-testid=\"edit-profile-modal\"]", "priority": "LOW"},
+      {"component": "Workout completion card", "issue": "KCAL is rendered as '-480' (red negative) which reads like a subtraction; should be '+480 kcal' or '480 kcal queimadas'.", "selector": "workout completion stats", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Workout completion", "issues": ["Negative-looking kcal figure (-480) is confusing"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/backend/tests/test_auth_and_isolation.py",
+    "/app/test_reports/pytest/pytest_new_features.xml"
+  ],
+  "action_items": [
+    "Consider making POST /api/workout/complete idempotent per day to prevent inflating weekly stats/challenges on double-clicks.",
+    "Add Escape-key handler to close Profile edit modal (and Leagues invite modal) for consistency.",
+    "Change kcal rendering in workout completion card to positive/neutral color."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to ~780 lines — same suggestion as iteration 1: split into modules (auth, workout, leagues, ai_coach, assessment, seeding).",
+    "POST /api/leagues/join-by-code awaits join_league(lg['id'], user) but join_league is a FastAPI route function — it works because it's a plain async fn returning dict, however it's fragile. Extract shared logic into an internal helper.",
+    "generate_plan parses JSON from LLM output with .split('```') — brittle; consider a proper markdown code-fence stripper or ask the model for structured output via 'response_format=json'.",
+    "chat_endpoint saves the user message BEFORE streaming, so if the client aborts we still store an orphan user turn. Acceptable, just be aware."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/tests/seed_frontend_user.py"
+  ],
+  "success_rate": {"backend": "100% (10/10 new + 23/23 regression from iteration_1)", "frontend": "100% (all critical flows verified via Playwright)"},
+  "test_credentials": "No app credentials — sessions seeded directly into MongoDB (users + user_sessions) and cookie 'session_token' injected into Playwright context. All test users cleaned up after runs (prefix fe_test_ and test_new_).",
+  "seed_data_creation": "Helper /app/tests/seed_frontend_user.py creates fully-seeded users with sessions. Cleaned after testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Two pytest suites exist and can be re-run as regression: test_auth_and_isolation.py (23 tests) and test_new_features.py (10 tests). Both self-clean via module-scope fixtures. For Playwright, use /app/tests/seed_frontend_user.py to create users then inject cookie 'session_token' on the preview domain. Splash timeout is 1.8s. lg1 invite code is persistent per league — once generated it stays; test cleanup does NOT reset lg1.invite_code.",
+  "rca of the issue": "N/A — no blocker bugs. Two low-severity UX issues reported (Escape key on modals, negative kcal rendering)."
+}

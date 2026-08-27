@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { Home, Dumbbell, TrendingUp, Trophy, User, MessageCircle, Wifi, Signal, BatteryFull, Loader2 } from "lucide-react";
@@ -6,6 +6,8 @@ import { Home, Dumbbell, TrendingUp, Trophy, User, MessageCircle, Wifi, Signal, 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./components/Login";
 import AuthCallback from "./components/AuthCallback";
+import Splash from "./components/Splash";
+import Assessment from "./components/Assessment";
 import Dashboard from "./components/Dashboard";
 import Workout from "./components/Workout";
 import Progress from "./components/Progress";
@@ -114,14 +116,19 @@ function Content() {
   }
   if (loading) return <FullLoader />;
   if (!user) return <div className="phone-scroll no-scrollbar"><Login /></div>;
+  if (!user.assessment_done) return <div className="phone-scroll no-scrollbar"><Assessment /></div>;
   return <AuthedApp />;
 }
 
 function Shell() {
+  const [splash, setSplash] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setSplash(false), 1800);
+    return () => clearTimeout(t);
+  }, []);
   return (
     <div className="phone grid-bg">
-      <StatusBar />
-      <Content />
+      {splash ? <Splash /> : (<><StatusBar /><Content /></>)}
     </div>
   );
 }

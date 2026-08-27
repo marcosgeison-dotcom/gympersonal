@@ -30,6 +30,14 @@ export const api = {
   getProgress: () => http.get("/progress").then((r) => r.data),
   addMeasurement: (data) => http.post("/measurements", data).then((r) => r.data),
 
+  chatHistory: () => http.get("/chat/history").then((r) => r.data),
+  generatePlan: () => http.post("/workout/generate-plan").then((r) => r.data),
+  activatePlan: (id) => http.post(`/workout/plans/${id}/activate`).then((r) => r.data),
+  getEmergency: () => http.get("/workout/emergency").then((r) => r.data),
+  getInvite: (id) => http.get(`/leagues/${id}/invite`).then((r) => r.data),
+  joinByCode: (code) => http.post("/leagues/join-by-code", { code }).then((r) => r.data),
+  submitAssessment: (data) => http.post("/assessment", data).then((r) => r.data),
+
   getLeagues: () => http.get("/leagues").then((r) => r.data),
   createLeague: (name) => http.post("/leagues", { name }).then((r) => r.data),
   joinLeague: (id) => http.post(`/leagues/${id}/join`).then((r) => r.data),

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronLeft, Sparkles, Check, Plus, Minus, Loader2, CheckCircle2, Zap, Home,
+  ChevronLeft, Sparkles, Check, Plus, Minus, Loader2, CheckCircle2, Zap, Home, Share2,
 } from "lucide-react";
 import api from "../api";
+import { shareAchievement } from "./ShareCard";
 import { Loader } from "./Dashboard";
 
 export default function Workout() {
@@ -46,7 +47,34 @@ export default function Workout() {
     setFinished(true);
   };
 
-  const generate = () => { setGenerating(true); setTimeout(() => { setGenerating(false); setTab("hoje"); }, 2200); };
+  const loadWorkout = (w) => {
+    setWorkout(w);
+    setExercises(w.exercises.map((e) => ({ ...e, logged: Array(e.sets).fill(null).map(() => ({ weight: e.weight, reps: 10, done: false })) })));
+    setFinished(false);
+    setOpen(null);
+  };
+
+  const generate = async () => {
+    setGenerating(true);
+    try {
+      const r = await api.generatePlan();
+      loadWorkout(r.workout);
+      setPlans(await api.getPlans());
+      setTab("hoje");
+    } catch (e) {
+      alert("Falha ao gerar plano com IA. Tente novamente.");
+    }
+    setGenerating(false);
+  };
+
+  const emergency = async () => {
+    try { loadWorkout(await api.getEmergency()); } catch (e) { /* noop */ }
+  };
+
+  const activate = async (id) => {
+    await api.activatePlan(id);
+    setPlans(await api.getPlans());
+  };
 
   return (
     <div className="animate-slide-up" style={{ padding: "8px 16px 24px" }}>
@@ -105,7 +133,7 @@ export default function Workout() {
           </div>
 
           <button onClick={finish} style={primaryBtn}><Check size={20} /> Finalizar Treino</button>
-          <button style={{ ...ghostBtn, marginTop: 10 }}><Home size={18} /> Treino Emergencial (sem equipamento)</button>
+          <button data-testid="emergency-workout-btn" onClick={emergency} style={{ ...ghostBtn, marginTop: 10 }}><Home size={18} /> Treino Emergencial (sem equipamento)</button>
         </>
       )}
 
@@ -117,8 +145,9 @@ export default function Workout() {
           <div style={{ display: "flex", gap: 10, justifyContent: "center", marginBottom: 18 }}>
             <MiniStat v={pct + "%"} l="Completo" c="#39ff14" />
             <MiniStat v={doneSets} l="Séries" c="#7c5cff" />
-            <MiniStat v="~480" l="Kcal" c="#f59e0b" />
+            <MiniStat v="+480" l="Kcal queimadas" c="#f59e0b" />
           </div>
+          <button data-testid="share-achievement-btn" onClick={() => shareAchievement({ workoutName: workout.name, xp: result?.xp_gained ?? 280, sets: doneSets, pct, kcal: 480, streak: result?.stats?.streak ?? 1 })} style={{ ...primaryBtn, background: "linear-gradient(145deg,#39ff14,#16a34a)", color: "#0a0a0c", marginBottom: 10 }}><Share2 size={20} /> Compartilhar Conquista</button>
           <button onClick={() => nav("/")} style={primaryBtn}>Voltar ao Início</button>
         </div>
       )}
@@ -137,7 +166,7 @@ export default function Workout() {
                     <div className="font-display" style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div>
                     <div className="font-mono-t" style={{ fontSize: 11, color: "var(--muted)" }}>{p.days}x/semana · {p.focus}</div>
                   </div>
-                  {p.active ? <span className="term-label neon-text" style={{ padding: "4px 8px", background: "rgba(124,92,255,0.15)", borderRadius: 8 }}>ATIVO</span> : <button style={{ ...ghostBtn, width: "auto", padding: "7px 14px", fontSize: 12 }}>Ativar</button>}
+                  {p.active ? <span className="term-label neon-text" style={{ padding: "4px 8px", background: "rgba(124,92,255,0.15)", borderRadius: 8 }}>ATIVO</span> : <button data-testid={`activate-plan-${p.id}`} onClick={() => activate(p.id)} style={{ ...ghostBtn, width: "auto", padding: "7px 14px", fontSize: 12 }}>Ativar</button>}
                 </div>
                 <div style={{ height: 6, background: "#232329", borderRadius: 6, overflow: "hidden", marginTop: 10 }}>
                   <div style={{ width: `${p.progress}%`, height: "100%", background: "#7c5cff", borderRadius: 6 }} />

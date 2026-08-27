@@ -105,6 +105,18 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* streak at risk alert */}
+      {stats.streak_at_risk && (
+        <div data-testid="streak-alert" className="card-surface animate-slide-up" style={{ padding: 14, marginBottom: 14, border: "1px solid rgba(245,158,11,0.5)", background: "linear-gradient(145deg,#1a1410,#141418)", display: "flex", alignItems: "center", gap: 12 }}>
+          <Flame size={28} color="#f59e0b" fill="#f59e0b" className="live-dot" />
+          <div style={{ flex: 1 }}>
+            <div className="font-display" style={{ fontWeight: 700, fontSize: 14, color: "#f59e0b" }}>Seu streak de {stats.streak} dias está em risco!</div>
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>Treine hoje para não perder a sequência. Você consegue! 💪</div>
+          </div>
+          <button data-testid="streak-alert-train-btn" onClick={() => nav("/workout")} style={{ padding: "9px 14px", borderRadius: 12, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#f59e0b,#d97706)", color: "#0a0a0c", fontFamily: "Rajdhani", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>Treinar</button>
+        </div>
+      )}
+
       {/* today workout */}
       <SectionTitle title="TREINO DO DIA" onMore={() => nav("/workout")} />
       <button onClick={() => nav("/workout")} className="card-surface" style={{ width: "100%", textAlign: "left", padding: 0, marginBottom: 16, cursor: "pointer", overflow: "hidden", border: "1px solid rgba(124,92,255,0.4)" }}>

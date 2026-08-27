@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import json
 import logging
 import uuid
 import requests
@@ -10,6 +11,8 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+from fastapi.responses import StreamingResponse
+from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -23,6 +26,7 @@ api = APIRouter(prefix="/api")
 
 DEMO_ID = "u_001"
 DEFAULT_GYM = "IronCore Academia"
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 logging.basicConfig(level=logging.INFO)
@@ -104,6 +108,26 @@ class MeasurementIn(BaseModel):
     gordura: Optional[float] = None
     cintura: Optional[float] = None
     braco: Optional[float] = None
+
+
+class ChatIn(BaseModel):
+    message: str
+
+
+class JoinCodeIn(BaseModel):
+    code: str
+
+
+class AssessmentIn(BaseModel):
+    goal: str
+    experience: str
+    days_per_week: int
+    weight: float
+    height: float
+    body_fat: Optional[float] = None
+    waist: Optional[float] = None
+    injuries: Optional[str] = None
+    focus_area: Optional[str] = None
 
 
 # ---------------- Per-user seeding ----------------
@@ -311,6 +335,9 @@ async def _my_league_snippet(user_id: str):
 async def dashboard(user=Depends(get_current_user)):
     u = uid(user)
     stats = clean(await db.dashboard_stats.find_one({"user_id": u}))
+    if stats:
+        today_s = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        stats["streak_at_risk"] = bool(stats.get("streak", 0) > 0 and stats.get("last_workout_date") != today_s)
     tip = clean(await db.daily_tips.find_one({}))
     workout = clean(await db.today_workout.find_one({"user_id": u}))
     chal = [clean(d) for d in await db.challenges.find({"user_id": u}).to_list(3)]
@@ -332,11 +359,38 @@ async def workout_plans(user=Depends(get_current_user)):
 @api.post("/workout/complete")
 async def workout_complete(user=Depends(get_current_user)):
     u = uid(user)
+    now = datetime.now(timezone.utc)
+    today_s = now.strftime("%Y-%m-%d")
+    yest_s = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    ds = await db.dashboard_stats.find_one({"user_id": u})
+    last_completed = ds.get("last_completed_at")
+    if last_completed and (now - datetime.fromisoformat(last_completed)).total_seconds() < 60:
+        return {"xp_gained": 0, "stats": clean(ds)}
+    streak = ds.get("streak", 0)
+    last = ds.get("last_workout_date")
+    if last != today_s:
+        streak = streak + 1 if last == yest_s else 1
+    weekly = ds.get("weekly_days", [False] * 7)
+    weekly[now.weekday()] = True
+    total = ds.get("total_workouts", 0) + 1
     xp_gained = 280
-    await db.users.update_one({"user_id": u}, {"$inc": {"xp": xp_gained}})
-    await db.dashboard_stats.update_one({"user_id": u}, {"$inc": {"workouts_this_week": 1, "calories_week": 480}})
-    await db.league_members.update_many({"user_id": u}, {"$inc": {"workouts_week": 1, "calories_week": 480, "workouts_month": 1, "calories_month": 480}})
+    await db.users.update_one({"user_id": u}, {"$inc": {"xp": xp_gained}, "$set": {"streak": streak}})
+    await db.dashboard_stats.update_one({"user_id": u}, {
+        "$inc": {"workouts_this_week": 1, "calories_week": 480},
+        "$set": {"streak": streak, "last_workout_date": today_s, "weekly_days": weekly, "total_workouts": total, "last_completed_at": now.isoformat()}})
+    await db.league_members.update_many({"user_id": u}, {
+        "$inc": {"workouts_week": 1, "calories_week": 480, "workouts_month": 1, "calories_month": 480},
+        "$set": {"streak": streak}})
     stats = clean(await db.dashboard_stats.find_one({"user_id": u}))
+    await db.challenges.update_one({"id": f"{u}_c1"}, {"$set": {"progress": stats["workouts_this_week"]}})
+    await db.challenges.update_one({"id": f"{u}_c2"}, {"$set": {"progress": stats["calories_week"]}})
+    await db.challenges.update_one({"id": f"{u}_c3"}, {"$set": {"progress": streak}})
+    if stats["workouts_this_week"] >= stats.get("weekly_goal", 5):
+        await db.achievements.update_one({"id": f"{u}_a1"}, {"$set": {"unlocked": True, "color": "#f59e0b"}})
+    if streak >= 15:
+        await db.achievements.update_one({"id": f"{u}_a2"}, {"$set": {"unlocked": True, "color": "#7c5cff"}})
+    if total >= 100:
+        await db.achievements.update_one({"id": f"{u}_a3"}, {"$set": {"unlocked": True, "color": "#39ff14"}})
     return {"xp_gained": xp_gained, "stats": stats}
 
 
@@ -455,6 +509,197 @@ async def league_ranking(league_id: str, metric: str = "workouts", period: str =
     for m in members:
         m["is_me"] = (m.get("user_id") == uid(user))
     return {"metric": metric, "period": period, "key": key, "members": members}
+
+
+# ---------------- AI Coach ----------------
+MUSCLE_IMGS = {
+    "Peito": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400&h=300&fit=crop",
+    "Costas": "https://images.unsplash.com/photo-1598971639058-fab3c3109a00?w=400&h=300&fit=crop",
+    "Perna": "https://images.unsplash.com/photo-1574680096145-d05b474e2155?w=400&h=300&fit=crop",
+    "Ombro": "https://images.unsplash.com/photo-1532029837206-abbe2b7620e3?w=400&h=300&fit=crop",
+    "Braço": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop",
+    "Tríceps": "https://images.unsplash.com/photo-1591940765400-16b3b7c33d3e?w=400&h=300&fit=crop",
+    "Bíceps": "https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=400&h=300&fit=crop",
+    "Abdômen": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&h=300&fit=crop",
+    "Cardio": "https://images.unsplash.com/photo-1538805060514-97d9cc17730c?w=400&h=300&fit=crop",
+}
+DEFAULT_EX_IMG = "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=400&h=300&fit=crop"
+
+EMERGENCY_WORKOUT = {
+    "name": "Treino Emergencial", "focus": "Peso Corporal · Full Body",
+    "day": "Sem equipamento", "duration": "~25 min", "total_volume": "—",
+    "exercises": [
+        {"id": "em1", "name": "Flexão de Braços", "muscle": "Peito", "sets": 4, "reps": "12-15", "weight": 0, "img": MUSCLE_IMGS["Peito"]},
+        {"id": "em2", "name": "Agachamento Corporal", "muscle": "Perna", "sets": 4, "reps": "15-20", "weight": 0, "img": MUSCLE_IMGS["Perna"]},
+        {"id": "em3", "name": "Prancha", "muscle": "Abdômen", "sets": 3, "reps": "45s", "weight": 0, "img": MUSCLE_IMGS["Abdômen"]},
+        {"id": "em4", "name": "Afundo Alternado", "muscle": "Perna", "sets": 3, "reps": "12/perna", "weight": 0, "img": MUSCLE_IMGS["Perna"]},
+        {"id": "em5", "name": "Burpee", "muscle": "Cardio", "sets": 3, "reps": "10", "weight": 0, "img": MUSCLE_IMGS["Cardio"]},
+    ],
+}
+
+
+@api.get("/chat/history")
+async def chat_history(user=Depends(get_current_user)):
+    return [clean(m) for m in await db.chat_messages.find({"user_id": uid(user)}).sort("ts", 1).to_list(100)]
+
+
+@api.post("/chat")
+async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
+    u = uid(user)
+    style = await db.trainer_styles.find_one({"id": user.get("trainer_style", "t1")}) or {}
+    stats = await db.dashboard_stats.find_one({"user_id": u}) or {}
+    profile = await db.fitness_profiles.find_one({"user_id": u}) or {}
+    history = await db.chat_messages.find({"user_id": u}).sort("ts", -1).to_list(10)
+    history.reverse()
+    hist_txt = "\n".join(f"{m['role']}: {m['text']}" for m in history)
+    system = (
+        f"Você é o Treinador IA do app GymPersonal, um personal trainer especialista em musculação, nutrição esportiva e condicionamento.\n"
+        f"Sua personalidade: {style.get('name', 'O Motivador')} — {style.get('desc', 'cheio de energia e incentivo')}.\n"
+        f"Dados do aluno: nome {user['name']}, objetivo: {profile.get('goal')}, nível: {profile.get('level')}, "
+        f"peso: {profile.get('weight')}kg, altura: {profile.get('height')}cm, treinos esta semana: {stats.get('workouts_this_week')}, "
+        f"streak: {stats.get('streak')} dias.\n"
+        f"Responda SEMPRE em português (PT-BR), de forma prática, específica e concisa (máx ~120 palavras).\n"
+        f"Histórico recente da conversa:\n{hist_txt}"
+    )
+    await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "user_id": u, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"coach_{u}_{uuid.uuid4().hex[:6]}", system_message=system).with_model("openai", "gpt-5.5")
+
+    async def gen():
+        full = ""
+        try:
+            async for ev in chat.stream_message(UserMessage(text=body.message)):
+                if isinstance(ev, TextDelta):
+                    full += ev.content
+                    yield ev.content
+                elif isinstance(ev, StreamDone):
+                    break
+        except Exception as e:
+            logger.error(f"chat stream error: {e}")
+            if not full:
+                yield "Desculpe, tive um problema para responder agora. Tente novamente em instantes."
+        if full:
+            await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "user_id": u, "role": "trainer", "text": full, "ts": datetime.now(timezone.utc).isoformat()})
+
+    return StreamingResponse(gen(), media_type="text/plain", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@api.post("/workout/generate-plan")
+async def generate_plan(user=Depends(get_current_user)):
+    u = uid(user)
+    profile = await db.fitness_profiles.find_one({"user_id": u}) or {}
+    assess = await db.assessments.find_one({"user_id": u}) or {}
+    prompt = (
+        f"Gere um plano de treino de musculação personalizado.\n"
+        f"Objetivo: {profile.get('goal')}. Nível: {profile.get('level')}. Dias/semana: {assess.get('days_per_week', 4)}. "
+        f"Peso: {profile.get('weight')}kg. Lesões/restrições: {assess.get('injuries') or 'nenhuma'}. Foco: {assess.get('focus_area') or 'Corpo todo'}.\n"
+        'Responda APENAS com JSON válido neste formato exato:\n'
+        '{"plan_name": "nome curto", "focus": "foco do plano", "days": 4, "workout": {"name": "nome do treino de hoje", '
+        '"focus": "grupo muscular · tipo", "duration": "~50 min", "exercises": [{"name": "...", "muscle": "...", "sets": 4, "reps": "8-10", "weight": 20}]}}\n'
+        "O workout é o treino de hoje (dia 1) com 5 a 6 exercícios. O campo muscle deve ser um de: Peito, Costas, Perna, Ombro, Braço, Tríceps, Bíceps, Abdômen, Cardio. weight em kg adequado ao nível."
+    )
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"plan_{u}_{uuid.uuid4().hex[:6]}",
+                   system_message="Você é um personal trainer especialista. Responda APENAS com JSON válido, sem markdown.").with_model("openai", "gpt-5.5")
+    try:
+        resp = await chat.send_message(UserMessage(text=prompt))
+        txt = (resp if isinstance(resp, str) else str(resp)).strip()
+        if txt.startswith("```"):
+            txt = txt.split("```")[1]
+            if txt.startswith("json"):
+                txt = txt[4:]
+        data = json.loads(txt.strip())
+    except Exception as e:
+        logger.error(f"plan generation error: {e}")
+        raise HTTPException(status_code=502, detail="Falha ao gerar plano com IA")
+    w = data["workout"]
+    exercises = []
+    for i, ex in enumerate(w.get("exercises", [])):
+        exercises.append({"id": f"g{i+1}", "name": ex["name"], "muscle": ex.get("muscle", ""),
+                          "sets": int(ex.get("sets", 3)), "reps": str(ex.get("reps", "10")),
+                          "weight": float(ex.get("weight", 10)), "img": MUSCLE_IMGS.get(ex.get("muscle"), DEFAULT_EX_IMG)})
+    workout_doc = {"user_id": u, "name": w.get("name", data.get("plan_name", "Treino IA")),
+                   "focus": w.get("focus", "IA · Personalizado"), "day": "Dia 1 · Gerado por IA",
+                   "duration": w.get("duration", "~50 min"), "total_volume": "—", "exercises": exercises}
+    await db.today_workout.delete_many({"user_id": u})
+    await db.today_workout.insert_one(dict(workout_doc))
+    await db.plans.update_many({"user_id": u}, {"$set": {"active": False}})
+    plan = {"id": f"{u}_ai_{uuid.uuid4().hex[:5]}", "user_id": u, "name": data.get("plan_name", "Plano IA"),
+            "days": int(data.get("days", 4)), "focus": data.get("focus", "IA"), "active": True, "progress": 0, "ai": True}
+    await db.plans.insert_one(dict(plan))
+    return {"plan": clean(plan), "workout": clean(workout_doc)}
+
+
+@api.get("/workout/emergency")
+async def emergency_workout(user=Depends(get_current_user)):
+    return EMERGENCY_WORKOUT
+
+
+@api.post("/workout/plans/{plan_id}/activate")
+async def activate_plan(plan_id: str, user=Depends(get_current_user)):
+    u = uid(user)
+    p = await db.plans.find_one({"id": plan_id, "user_id": u})
+    if not p:
+        raise HTTPException(404, "Plan not found")
+    await db.plans.update_many({"user_id": u}, {"$set": {"active": False}})
+    await db.plans.update_one({"id": plan_id}, {"$set": {"active": True}})
+    return {"ok": True}
+
+
+# ---------------- League invites ----------------
+@api.get("/leagues/{league_id}/invite")
+async def league_invite(league_id: str, user=Depends(get_current_user)):
+    lg = await db.leagues.find_one({"id": league_id})
+    if not lg:
+        raise HTTPException(404, "League not found")
+    if not await db.league_members.find_one({"league_id": league_id, "user_id": uid(user)}):
+        raise HTTPException(403, "Somente membros podem convidar")
+    code = lg.get("invite_code")
+    if not code:
+        code = uuid.uuid4().hex[:6].upper()
+        await db.leagues.update_one({"id": league_id}, {"$set": {"invite_code": code}})
+    return {"code": code, "league_name": lg["name"]}
+
+
+@api.post("/leagues/join-by-code")
+async def join_league_by_code(body: JoinCodeIn, user=Depends(get_current_user)):
+    code = body.code.strip().upper()
+    lg = await db.leagues.find_one({"invite_code": code})
+    if not lg:
+        raise HTTPException(404, "Código inválido")
+    await join_league(lg["id"], user)
+    return {"ok": True, "league": clean(lg)}
+
+
+# ---------------- Professional assessment ----------------
+@api.get("/assessment")
+async def get_assessment(user=Depends(get_current_user)):
+    a = clean(await db.assessments.find_one({"user_id": uid(user)}))
+    return {"done": bool(user.get("assessment_done")), "assessment": a}
+
+
+@api.post("/assessment")
+async def submit_assessment(body: AssessmentIn, user=Depends(get_current_user)):
+    u = uid(user)
+    doc = {"user_id": u, **body.dict(), "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.assessments.update_one({"user_id": u}, {"$set": doc}, upsert=True)
+    upd = {"weight": body.weight, "height": body.height, "goal": body.goal, "level": body.experience}
+    if body.body_fat is not None:
+        upd["body_fat"] = body.body_fat
+    if body.waist is not None:
+        upd["waist"] = body.waist
+    await db.fitness_profiles.update_one({"user_id": u}, {"$set": upd})
+    for label, val in [("Peso", body.weight), ("Gordura", body.body_fat), ("Cintura", body.waist)]:
+        if val is not None:
+            await db.measurements.update_one({"user_id": u, "label": label},
+                                             {"$set": {"value": val, "delta": 0, "history": [val, val]}})
+    await db.dashboard_stats.update_one({"user_id": u}, {"$set": {"weekly_goal": body.days_per_week}})
+    await db.challenges.update_one({"id": f"{u}_c1"},
+                                   {"$set": {"title": f"Complete {body.days_per_week} treinos esta semana", "total": body.days_per_week}})
+    if not await db.achievements.find_one({"id": f"{u}_a0"}):
+        await db.achievements.insert_one({"id": f"{u}_a0", "user_id": u, "name": "Avaliação Pro", "icon": "target", "unlocked": True, "color": "#22d3ee"})
+    else:
+        await db.achievements.update_one({"id": f"{u}_a0"}, {"$set": {"unlocked": True, "color": "#22d3ee"}})
+    await db.users.update_one({"user_id": u}, {"$set": {"assessment_done": True}})
+    return await db.users.find_one({"user_id": u}, {"_id": 0})
 
 
 # ---------------- Global seed ----------------

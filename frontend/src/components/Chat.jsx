@@ -1,31 +1,63 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Activity, Sparkles } from "lucide-react";
+import { Send, Activity } from "lucide-react";
 import { Header } from "./Workout";
-import { CHAT_HISTORY, CHAT_SUGGESTIONS, MOCK_AI_REPLIES } from "../mock";
+import { CHAT_SUGGESTIONS } from "../mock";
+
+const BASE = process.env.REACT_APP_BACKEND_URL;
+const WELCOME = { id: "w1", role: "trainer", text: "E aí, atleta! 💪 Sou seu Treinador IA. Posso montar treinos, ajustar cargas, tirar dúvidas de técnica, nutrição e recuperação. Como posso ajudar hoje?" };
 
 export default function Chat() {
   const nav = useNavigate();
-  const [messages, setMessages] = useState(CHAT_HISTORY);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const endRef = useRef(null);
-  const replyIdx = useRef(0);
+
+  useEffect(() => {
+    fetch(`${BASE}/api/chat/history`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((h) => setMessages(Array.isArray(h) && h.length ? h.map((m, i) => ({ id: m.id || "h" + i, role: m.role, text: m.text })) : [WELCOME]))
+      .catch(() => setMessages([WELCOME]));
+  }, []);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, typing]);
 
-  const send = (text) => {
+  const send = async (text) => {
     const t = (text ?? input).trim();
-    if (!t) return;
-    setMessages((prev) => [...prev, { id: "u" + Date.now(), role: "user", text: t }]);
+    if (!t || typing) return;
+    setMessages((p) => [...p, { id: "u" + Date.now(), role: "user", text: t }]);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
-      const reply = MOCK_AI_REPLIES[replyIdx.current % MOCK_AI_REPLIES.length];
-      replyIdx.current += 1;
-      setTyping(false);
-      setMessages((prev) => [...prev, { id: "t" + Date.now(), role: "trainer", text: reply }]);
-    }, 1400);
+    const aiId = "t" + Date.now();
+    try {
+      const res = await fetch(`${BASE}/api/chat`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: t }),
+      });
+      if (!res.ok || !res.body) throw new Error("chat failed");
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let full = "";
+      let started = false;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += dec.decode(value, { stream: true });
+        if (!started) {
+          started = true;
+          setTyping(false);
+          setMessages((p) => [...p, { id: aiId, role: "trainer", text: full }]);
+        } else {
+          setMessages((p) => p.map((m) => (m.id === aiId ? { ...m, text: full } : m)));
+        }
+      }
+    } catch (e) {
+      setMessages((p) => [...p.filter((m) => m.id !== aiId), { id: aiId, role: "trainer", text: "Ops, não consegui responder agora. Tente novamente em instantes." }]);
+    }
+    setTyping(false);
   };
 
   return (
@@ -35,7 +67,7 @@ export default function Chat() {
           right={<div className="term-label neon-text live-dot" style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#39ff14", display: "inline-block" }} /> ONLINE</div>} />
       </div>
 
-      <div className="no-scrollbar" style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
+      <div className="no-scrollbar" data-testid="chat-messages" style={{ flex: 1, overflowY: "auto", padding: "0 16px" }}>
         {messages.map((m) => <Bubble key={m.id} m={m} />)}
         {typing && (
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -50,7 +82,6 @@ export default function Chat() {
         <div ref={endRef} />
       </div>
 
-      {/* suggestions */}
       <div className="no-scrollbar" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "10px 16px 8px" }}>
         {CHAT_SUGGESTIONS.map((s) => (
           <button key={s} onClick={() => send(s)} style={{
@@ -60,16 +91,16 @@ export default function Chat() {
         ))}
       </div>
 
-      {/* input */}
       <div style={{ display: "flex", gap: 8, padding: "8px 16px 14px", alignItems: "center" }}>
         <input
+          data-testid="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Pergunte ao seu treinador..."
           style={{ flex: 1, padding: "13px 16px", borderRadius: 16, background: "#1c1c22", border: "1px solid var(--border)", color: "#fff", fontSize: 14, outline: "none" }}
         />
-        <button onClick={() => send()} style={{ width: 46, height: 46, borderRadius: 15, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 18px rgba(124,92,255,0.4)", flexShrink: 0 }}>
+        <button data-testid="chat-send-btn" onClick={() => send()} style={{ width: 46, height: 46, borderRadius: 15, border: "none", cursor: "pointer", background: "linear-gradient(145deg,#7c5cff,#5b3ee0)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 18px rgba(124,92,255,0.4)", flexShrink: 0 }}>
           <Send size={20} color="#fff" />
         </button>
       </div>
@@ -91,7 +122,7 @@ function Bubble({ m }) {
     <div className="animate-slide-up" style={{ display: "flex", gap: 8, marginBottom: 14, flexDirection: isUser ? "row-reverse" : "row" }}>
       {!isUser && <Avatar />}
       <div style={{
-        maxWidth: "76%", padding: "11px 15px", fontSize: 14, lineHeight: 1.5,
+        maxWidth: "76%", padding: "11px 15px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap",
         borderRadius: isUser ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
         background: isUser ? "linear-gradient(145deg,#7c5cff,#5b3ee0)" : "var(--surface)",
         border: isUser ? "none" : "1px solid var(--border)",

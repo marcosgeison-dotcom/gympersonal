@@ -105,6 +105,61 @@
 user_problem_statement: "Gym Personal App (clone from APK). Etapa 1 & 2 backend: simplified single-user (u_001) FastAPI + MongoDB with seeding. Features: user/profile, dashboard, workouts + performance logging, exercise library, progress (measurements/1RM/plateaus/volume), and multiplayer Leagues per gym with weekly/monthly ranking by workouts, calories, streaks."
 
 backend:
+  - task: "AI Coach chat (GPT-5.5 streaming) + chat history"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "POST /api/chat streams GPT-5.5 (emergentintegrations, EMERGENT_LLM_KEY) text/plain, persists messages in chat_messages. GET /api/chat/history. System prompt uses trainer_style + user stats. Smoke tested via curl: real AI reply in PT-BR received."
+  - task: "AI plan generation + emergency workout + plan activate"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "POST /api/workout/generate-plan (GPT-5.5 JSON -> replaces today_workout, creates active plan), GET /api/workout/emergency (static bodyweight), POST /api/workout/plans/{id}/activate. Smoke tested: plan 'Full Body 4x' with 6 exercises generated."
+  - task: "League invite codes (get invite + join-by-code)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "GET /api/leagues/{id}/invite (members only, generates 6-char code, persisted on league doc). POST /api/leagues/join-by-code {code}. Not yet tested."
+  - task: "Streak logic + streak_at_risk + challenges/achievements progress on workout complete"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "workout/complete now: streak increments (yesterday->+1, gap->1, same day->unchanged), last_workout_date, weekly_days[weekday], total_workouts, updates challenges c1/c2/c3 progress and unlocks achievements a1/a2/a3. /api/dashboard stats now includes streak_at_risk (streak>0 and no workout today)."
+  - task: "Professional assessment (GET/POST /api/assessment)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "POST /api/assessment stores baseline, updates fitness_profile + measurements baselines + weekly_goal + challenge c1, unlocks 'Avaliação Pro' achievement (a0), sets users.assessment_done=true, returns updated user. Smoke tested via curl: assessment_done=true."
   - task: "Emergent Google Auth (session/me/logout) + multi-user isolation"
     implemented: true
     working: true
@@ -193,6 +248,18 @@ backend:
         -comment: "All 7 league endpoints tested successfully. GET /api/leagues returns 4 leagues with lg1 joined=true. GET /api/leagues/lg1 returns league detail. GET /api/leagues/lg1/ranking tested with metric=workouts&period=weekly (sorted desc by workouts_week), metric=calories&period=monthly (sorted desc by calories_month), and metric=streak (sorted desc by streak). Rafael (is_me=true) present in all rankings. POST /api/leagues creates 'Test Squad' with joined=true. POST /api/leagues/lg2/join successfully joins and increments members count."
 
 frontend:
+  - task: "Splash screen + Assessment gate + AI Chat streaming + Workout AI/emergency/activate/share + Leagues invite modal + Dashboard streak alert + Profile edit modal"
+    implemented: true
+    working: "NA"
+    file: "frontend/src (App.js, Splash.jsx, Assessment.jsx, Chat.jsx, Workout.jsx, Leagues.jsx, Dashboard.jsx, Profile.jsx, ShareCard.jsx)"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Splash logo-only 1.8s on load. Assessment (3 steps) gates app when user.assessment_done falsy. Chat streams from /api/chat via fetch reader. Workout: generatePlan real, emergency real, activate plan real, share achievement (canvas PNG via navigator.share/download). Leagues: invite modal (code, copy, share, join-by-code). Dashboard: streak_at_risk banner. Profile: edit fitness profile modal (settings btn + Atualizar btn)."
+
   - task: "Frontend API integration (Etapa 1&2)"
     implemented: true
     working: "NA"
