@@ -105,6 +105,22 @@
 user_problem_statement: "Gym Personal App (clone from APK). Etapa 1 & 2 backend: simplified single-user (u_001) FastAPI + MongoDB with seeding. Features: user/profile, dashboard, workouts + performance logging, exercise library, progress (measurements/1RM/plateaus/volume), and multiplayer Leagues per gym with weekly/monthly ranking by workouts, calories, streaks."
 
 backend:
+  - task: "Emergent Google Auth (session/me/logout) + multi-user isolation"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -working: true
+        -agent: "testing"
+        -comment: "23/23 passed (iteration_1.json). Auth via Bearer works, all endpoints protected, data isolation between 2 users verified, regression OK. Main agent then fixed minors: /api/exercises now requires auth; /api/auth/session network errors normalized to 401 (both verified via curl)."
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added /api/auth/session (exchanges Emergent session_id, upserts user by email, seeds per-user starter data, stores user_sessions, sets httpOnly cookie), /api/auth/me, /api/auth/logout. get_current_user reads session_token cookie OR Authorization Bearer. ALL app endpoints now require auth and are scoped by user_id. Global data (leagues, exercises, trainer_styles, daily_tips, bot league_members) seeded once. New users auto-join lg1. DB was reset. NOTE: /api/auth/session cannot be tested without a real Emergent session_id; test protected endpoints by inserting a test user+session directly into Mongo (users.user_id + user_sessions.session_token) and using Authorization: Bearer <token>. Verify per-user data isolation between two different test users (each has own profile/dashboard/leagues membership)."
   - task: "User & Profile endpoints (/user/me, /user/trainer-style, /fitness-profile GET+PUT, /trainer-styles)"
     implemented: true
     working: true

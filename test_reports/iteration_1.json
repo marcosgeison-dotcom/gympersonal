@@ -1,0 +1,39 @@
+{
+  "summary": "Backend-only testing for Emergent Google Auth + multi-user data isolation. Created pytest suite that seeds two users + sessions directly in MongoDB and exercises auth endpoints, protected-endpoint guards, per-user regression flows, and cross-user isolation. All 23/23 tests passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/exercises", "issue": "Endpoint is NOT protected by get_current_user (no Depends), while every other data endpoint requires auth. Inconsistent with the multi-tenant requirement even though exercises are global."},
+      {"endpoint": "POST /api/auth/session", "issue": "Invalid session_id returns 502 (from requests.get exception path) in some cases instead of 401. Emergent endpoint may respond with non-200 mapped to 401, but network/DNS/timeouts surface as 502. Consider normalizing to 401 for consistency."},
+      {"endpoint": "POST /api/auth/session", "issue": "Cookie set with SameSite=None but no explicit Secure/httponly settings verification; also does not upsert user_sessions (multiple logins keep stacking rows for same token)."},
+      {"endpoint": "GET /api/leagues/{id}/ranking", "issue": "Does not validate that requesting user is a member of the league; any authed user can read any league ranking. Low severity, but worth noting."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_auth_and_isolation.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Decide if GET /api/exercises should require auth (currently public).",
+    "Consider normalizing auth_session network errors to 401 vs 502.",
+    "Consider deduplicating user_sessions on repeated login and cleaning expired rows."
+  ],
+  "critical_code_review_comments": [
+    "server.py is a single 543-line file mixing models, seeding, auth, and business routes. Split into modules (auth.py, leagues.py, workouts.py, seeding.py) once app grows further.",
+    "seed_global uses a v2 flag; if any change is made to seed data (e.g., add new league), you'll need to bump to v3 or the update won't roll out.",
+    "get_current_user reads session_token from cookie OR Authorization header — good. But it reads user via db.users on every request; acceptable for small scale.",
+    "POST /api/measurements only accepts a fixed set of labels via mapping dict; measurements not in mapping are silently ignored (no 400 for unknown fields).",
+    "workout/complete increments league_members for ALL leagues the user is in — correct multi-league behavior, but no idempotency (a user can spam-complete)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_and_isolation.py"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "not tested"},
+  "test_credentials": "Not required. Test users seeded directly into MongoDB (users + user_sessions collections) with Bearer tokens.",
+  "seed_data_creation": "Two test users (test_user_A_*, test_user_B_*) inserted into users, user_sessions, fitness_profiles, dashboard_stats, today_workout, measurements, league_members(lg1). Cleaned up after module completes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Auth via Bearer token works end-to-end. Test file /app/backend/tests/test_auth_and_isolation.py can be re-run as regression. It self-cleans on module teardown. Note that /api/exercises is currently a public endpoint by design/omission — test accepts either 200 or 401.",
+  "rca of the issue": "N/A — all tested behaviors passed."
+}

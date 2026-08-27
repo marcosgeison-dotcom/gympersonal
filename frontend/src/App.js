@@ -1,8 +1,11 @@
 import React from "react";
 import "./App.css";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { Home, Dumbbell, TrendingUp, Trophy, User, MessageCircle, Wifi, Signal, BatteryFull } from "lucide-react";
+import { Home, Dumbbell, TrendingUp, Trophy, User, MessageCircle, Wifi, Signal, BatteryFull, Loader2 } from "lucide-react";
 
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import Login from "./components/Login";
+import AuthCallback from "./components/AuthCallback";
 import Dashboard from "./components/Dashboard";
 import Workout from "./components/Workout";
 import Progress from "./components/Progress";
@@ -60,25 +63,29 @@ function ChatFab() {
   const { pathname } = useLocation();
   if (pathname === "/chat") return null;
   return (
-    <button
-      className="fab-chat"
-      onClick={() => nav("/chat")}
-      style={{
-        width: 54, height: 54, borderRadius: 18, border: "none", cursor: "pointer",
-        background: "linear-gradient(145deg, #7c5cff, #5b3ee0)",
-        boxShadow: "0 8px 26px rgba(124,92,255,0.5)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-    >
+    <button className="fab-chat" onClick={() => nav("/chat")} style={{
+      width: 54, height: 54, borderRadius: 18, border: "none", cursor: "pointer",
+      background: "linear-gradient(145deg, #7c5cff, #5b3ee0)",
+      boxShadow: "0 8px 26px rgba(124,92,255,0.5)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
       <MessageCircle size={24} color="#fff" />
     </button>
   );
 }
 
-function Shell() {
+function FullLoader() {
   return (
-    <div className="phone grid-bg">
-      <StatusBar />
+    <div className="phone-scroll no-scrollbar" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Loader2 size={30} className="neon-text" style={{ animation: "spin 1s linear infinite" }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+function AuthedApp() {
+  return (
+    <>
       <div className="phone-scroll no-scrollbar">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -93,6 +100,28 @@ function Shell() {
       </div>
       <ChatFab />
       <BottomNav />
+    </>
+  );
+}
+
+function Content() {
+  const location = useLocation();
+  const { user, loading } = useAuth();
+
+  // Process OAuth callback FIRST (synchronously during render) to avoid race conditions
+  if (location.hash?.includes("session_id=")) {
+    return <div className="phone-scroll no-scrollbar"><AuthCallback /></div>;
+  }
+  if (loading) return <FullLoader />;
+  if (!user) return <div className="phone-scroll no-scrollbar"><Login /></div>;
+  return <AuthedApp />;
+}
+
+function Shell() {
+  return (
+    <div className="phone grid-bg">
+      <StatusBar />
+      <Content />
     </div>
   );
 }
@@ -102,7 +131,9 @@ function App() {
     <div className="App">
       <div className="stage">
         <BrowserRouter>
-          <Shell />
+          <AuthProvider>
+            <Shell />
+          </AuthProvider>
         </BrowserRouter>
       </div>
     </div>

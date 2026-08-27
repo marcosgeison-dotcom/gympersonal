@@ -4,12 +4,14 @@ import { Settings, LogOut, Award, Ruler, Target, MapPin, Check, Palette, Dumbbel
 import { Flame, Zap, Trophy, Medal } from "lucide-react";
 import { Header } from "./Workout";
 import { Loader } from "./Dashboard";
+import { useAuth } from "../context/AuthContext";
 import api from "../api";
 
 const ICONS = { flame: Flame, zap: Zap, trophy: Trophy, dumbbell: Dumbbell, medal: Medal };
 
 export default function Profile() {
   const nav = useNavigate();
+  const { logout } = useAuth();
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [styles, setStyles] = useState([]);
@@ -99,7 +101,7 @@ export default function Profile() {
         })}
       </div>
 
-      <button style={{ width: "100%", padding: "13px 0", borderRadius: 14, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer", fontFamily: "Rajdhani", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+      <button onClick={logout} style={{ width: "100%", padding: "13px 0", borderRadius: 14, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)", cursor: "pointer", fontFamily: "Rajdhani", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <LogOut size={18} /> Sair da Conta
       </button>
     </div>

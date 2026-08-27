@@ -3,9 +3,14 @@ import axios from "axios";
 const BASE = process.env.REACT_APP_BACKEND_URL;
 const API = `${BASE}/api`;
 
-const http = axios.create({ baseURL: API });
+const http = axios.create({ baseURL: API, withCredentials: true });
 
 export const api = {
+  // auth
+  exchangeSession: (session_id) => http.post("/auth/session", { session_id }).then((r) => r.data),
+  me: () => http.get("/auth/me").then((r) => r.data),
+  logout: () => http.post("/auth/logout").then((r) => r.data),
+
   getUser: () => http.get("/user/me").then((r) => r.data),
   setTrainerStyle: (style_id) => http.put("/user/trainer-style", { style_id }).then((r) => r.data),
   getProfile: () => http.get("/fitness-profile").then((r) => r.data),
