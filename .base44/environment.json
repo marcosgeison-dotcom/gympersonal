@@ -4,8 +4,8 @@
   "startCommand": "docker compose -f docker-compose.base44.yml up -d",
   "secrets": [
     {
-      "name": "OPENAI_API_KEY",
-      "description": "OpenAI API key (sk-...) that powers the AI coach chat and AI workout-plan generation via litellm. Optional — app boots without it; AI endpoints return 503 until set. Obtain at https://platform.openai.com/api-keys (account must have billing/quota).",
+      "name": "OPENROUTER_API_KEY",
+      "description": "OpenRouter API key (sk-or-v1-...) that powers the AI coach chat and AI workout-plan generation via litellm (OpenAI-compatible). Optional — app boots without it; AI endpoints return 503 until set. Obtain free at https://openrouter.ai/keys. Default model: nvidia/nemotron-3-ultra-550b-a55b:free (override via OPENROUTER_MODEL env). Free models can intermittently return 429/503 (overloaded) — retry.",
       "requiredAtBoot": false
     }
   ]

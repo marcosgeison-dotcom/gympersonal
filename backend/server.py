@@ -14,8 +14,8 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
 
-# LLM via OpenAI-compatible API through litellm. litellm is installed in the image;
-# if it or OPENAI_API_KEY is absent, the AI endpoints degrade to 503.
+# LLM via OpenRouter (OpenAI-compatible) through litellm. litellm is installed in the
+# image; if it or OPENROUTER_API_KEY is absent, the AI endpoints degrade to 503.
 try:
     import litellm
 except ImportError:
@@ -33,8 +33,8 @@ api = APIRouter(prefix="/api")
 
 DEMO_ID = "u_001"
 DEFAULT_GYM = "IronCore Academia"
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
-OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
+OPENROUTER_API_KEY = os.environ.get('OPENROUTER_API_KEY')
+OPENROUTER_MODEL = os.environ.get('OPENROUTER_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b:free')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -588,15 +588,15 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
         f"Responda SEMPRE em português (PT-BR), de forma prática, específica e concisa (máx ~120 palavras).\n"
         f"Histórico recente da conversa:\n{hist_txt}"
     )
-    if not litellm or not OPENAI_API_KEY:
-        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENAI_API_KEY para habilitar o treinador IA.")
+    if not litellm or not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENROUTER_API_KEY para habilitar o treinador IA.")
     await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "user_id": u, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
 
     async def gen():
         full = ""
         try:
             stream = await litellm.acompletion(
-                model=OPENAI_MODEL, api_key=OPENAI_API_KEY, stream=True,
+                model=f"openrouter/{OPENROUTER_MODEL}", api_key=OPENROUTER_API_KEY, stream=True,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": body.message}],
                 max_tokens=400)
             async for chunk in stream:
@@ -632,7 +632,7 @@ async def generate_plan(user=Depends(get_current_user)):
     )
     try:
         resp = await litellm.acompletion(
-            model=OPENAI_MODEL, api_key=OPENAI_API_KEY,
+            model=f"openrouter/{OPENROUTER_MODEL}", api_key=OPENROUTER_API_KEY,
             messages=[{"role": "system", "content": "Você é um personal trainer especialista. Responda APENAS com JSON válido, sem markdown."},
                       {"role": "user", "content": prompt}],
             max_tokens=800)

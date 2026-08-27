@@ -15,8 +15,8 @@ CRA compile takes ~1-2 min on first boot (yarn install + webpack). Backend seeds
 
 ## Env / secrets
 - `MONGO_URL`, `DB_NAME` — inline in compose (local infra).
-- `OPENAI_API_KEY` — **optional** external secret (platform-managed at `/run/base44/app.env`, listed in `.base44/environment.json`). Powers the AI coach chat and AI plan generation via `litellm` (OpenAI-compatible). Without it (or if the key has no quota), those two endpoints return 503/502 (the app boots fine). Model defaults to `gpt-4o-mini`, override via `OPENAI_MODEL`.
-- `EMERGENT_LLM_KEY` — legacy, no longer used by the app (kept only because it was set earlier). The app is now fully decoupled from Emergent's LLM gateway.
+- `OPENROUTER_API_KEY` — **optional** external secret (platform-managed at `/run/base44/app.env`, listed in `.base44/environment.json`). Powers the AI coach chat and AI plan generation via `litellm` routed to **OpenRouter** (OpenAI-compatible). Without it, those two endpoints return 503 (the app boots fine). Default free model `nvidia/nemotron-3-ultra-550b-a55b:free`, override via `OPENROUTER_MODEL`. Note: OpenRouter free models can intermittently return 429/503 (upstream overloaded) — the plan endpoint retries succeed; treat transient failures as expected on the free tier.
+- `OPENAI_API_KEY`, `EMERGENT_LLM_KEY` — legacy, no longer used by the app (kept only because they were set earlier). The app is now fully decoupled from Emergent's LLM gateway and from direct OpenAI billing.
 
 ## Quirks / gotchas
 - `emergentintegrations==0.2.0` (in `backend/requirements.txt`) is a **platform-private** package not resolvable from PyPI here (its PyPI release is flagged malicious — do not install it). `backend/Dockerfile.base44` filters it out at install time. The app no longer imports it — AI now runs through `litellm` (installed from a direct wheel URL in requirements.txt, works offline).
