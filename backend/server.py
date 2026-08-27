@@ -616,8 +616,8 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
 
 @api.post("/workout/generate-plan")
 async def generate_plan(user=Depends(get_current_user)):
-    if not litellm or not OPENAI_API_KEY:
-        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENAI_API_KEY para gerar planos.")
+    if not litellm or not OPENROUTER_API_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENROUTER_API_KEY para gerar planos.")
     u = uid(user)
     profile = await db.fitness_profiles.find_one({"user_id": u}) or {}
     assess = await db.assessments.find_one({"user_id": u}) or {}
