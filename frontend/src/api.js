@@ -7,7 +7,8 @@ const http = axios.create({ baseURL: API, withCredentials: true });
 
 export const api = {
   // auth
-  exchangeSession: (session_id) => http.post("/auth/session", { session_id }).then((r) => r.data),
+  login: (email, password) => http.post("/auth/login", { email, password }).then((r) => r.data),
+  register: (name, email, password) => http.post("/auth/register", { name, email, password }).then((r) => r.data),
   me: () => http.get("/auth/me").then((r) => r.data),
   logout: () => http.post("/auth/logout").then((r) => r.data),
 

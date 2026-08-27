@@ -1,11 +1,38 @@
-import React from "react";
-import { Activity, Dumbbell, Trophy, TrendingUp, Sparkles } from "lucide-react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Activity, Dumbbell, Trophy, TrendingUp, Sparkles, Mail, Lock, User as UserIcon } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import api from "../api";
 
 export default function Login() {
-  const signIn = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+  const nav = useNavigate();
+  const { setUser } = useAuth();
+  const [mode, setMode] = useState("login"); // login | register
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    setErr("");
+    if (!email.trim() || !password) { setErr("Preencha e-mail e senha."); return; }
+    if (mode === "register" && !name.trim()) { setErr("Informe seu nome."); return; }
+    setBusy(true);
+    try {
+      const user = mode === "login"
+        ? await api.login(email.trim(), password)
+        : await api.register(name.trim(), email.trim(), password);
+      setUser(user);
+      nav("/", { replace: true });
+    } catch (e2) {
+      const msg = e2?.response?.data?.detail || "Não foi possível autenticar. Tente novamente.";
+      setErr(msg);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -22,24 +49,39 @@ export default function Login() {
         </div>
         <div className="term-label" style={{ marginTop: 6, letterSpacing: "0.24em" }}>SEU TREINADOR PESSOAL COM IA</div>
 
-        <p style={{ color: "#9ba1a6", fontSize: 14, lineHeight: 1.6, margin: "22px 0 30px", maxWidth: 300 }}>
+        <p style={{ color: "#9ba1a6", fontSize: 14, lineHeight: 1.6, margin: "22px 0 24px", maxWidth: 300 }}>
           Treinos personalizados por IA, progresso em tempo real e ligas com sua academia. Cada aluno, seus próprios dados.
         </p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, width: "100%", marginBottom: 34 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, width: "100%", marginBottom: 26 }}>
           <Feature icon={Dumbbell} label="Treinos IA" color="#7c5cff" />
           <Feature icon={TrendingUp} label="Progresso" color="#22d3ee" />
           <Feature icon={Trophy} label="Ligas" color="#f59e0b" />
         </div>
       </div>
 
-      <button onClick={signIn} style={{
-        width: "100%", padding: "15px 0", borderRadius: 16, border: "none", cursor: "pointer",
-        background: "#fff", color: "#1a1a1a", fontWeight: 600, fontSize: 15,
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-        boxShadow: "0 10px 30px rgba(0,0,0,0.4)", zIndex: 1,
-      }}>
-        <GoogleIcon /> Entrar com Google
+      <form onSubmit={submit} style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, zIndex: 1 }}>
+        {mode === "register" && (
+          <Field icon={UserIcon} value={name} onChange={setName} placeholder="Seu nome" type="text" />
+        )}
+        <Field icon={Mail} value={email} onChange={setEmail} placeholder="E-mail" type="email" />
+        <Field icon={Lock} value={password} onChange={setPassword} placeholder="Senha" type="password" />
+
+        {err && <div style={{ color: "#ff6b6b", fontSize: 12.5, textAlign: "center" }}>{err}</div>}
+
+        <button type="submit" disabled={busy} style={{
+          width: "100%", padding: "15px 0", borderRadius: 16, border: "none", cursor: busy ? "wait" : "pointer",
+          background: busy ? "#5b3ee0" : "#fff", color: "#1a1a1a", fontWeight: 600, fontSize: 15,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.4)", opacity: busy ? 0.7 : 1,
+        }}>
+          {busy ? "Carregando..." : (mode === "login" ? "Entrar" : "Criar conta")}
+        </button>
+      </form>
+
+      <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setErr(""); }}
+        style={{ width: "100%", background: "none", border: "none", color: "var(--muted)", fontSize: 13, marginTop: 14, cursor: "pointer", zIndex: 1 }}>
+        {mode === "login" ? "Não tem conta? Cadastre-se" : "Já tem conta? Entrar"}
       </button>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 16, color: "var(--muted)", fontSize: 11, zIndex: 1 }}>
@@ -50,22 +92,27 @@ export default function Login() {
   );
 }
 
+function Field({ icon: Icon, value, onChange, placeholder, type }) {
+  return (
+    <div className="card-surface" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px" }}>
+      <Icon size={18} color="#9ba1a6" />
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#fff", fontSize: 15 }}
+        autoComplete={type === "password" ? "current-password" : type}
+      />
+    </div>
+  );
+}
+
 function Feature({ icon: Icon, label, color }) {
   return (
     <div className="card-surface" style={{ padding: "14px 6px", textAlign: "center" }}>
       <Icon size={22} color={color} style={{ marginBottom: 6 }} />
       <div className="term-label" style={{ fontSize: 9 }}>{label}</div>
     </div>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 48 48">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-    </svg>
   );
 }

@@ -6,20 +6,20 @@ import os
 import json
 import logging
 import uuid
-import requests
+import secrets
+import bcrypt
 from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
 
-# emergentintegrations is a platform-provided AI integration package that is not
-# available in every environment. Import it lazily so the server boots without it;
-# the AI chat / plan-generation endpoints return 503 when it (or the LLM key) is absent.
+# LLM via OpenAI-compatible API through litellm. litellm is installed in the image;
+# if it or OPENAI_API_KEY is absent, the AI endpoints degrade to 503.
 try:
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+    import litellm
 except ImportError:
-    LlmChat = UserMessage = TextDelta = StreamDone = None
+    litellm = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,8 +33,8 @@ api = APIRouter(prefix="/api")
 
 DEMO_ID = "u_001"
 DEFAULT_GYM = "IronCore Academia"
-EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY')
-EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENAI_MODEL = os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,9 +76,38 @@ def uid(user):
     return user["user_id"]
 
 
+def hash_password(pw: str) -> str:
+    return bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(pw: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(pw.encode(), hashed.encode())
+    except Exception:
+        return False
+
+
+async def _create_session(user_id: str, response: Response) -> str:
+    session_token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(days=7)
+    await db.user_sessions.insert_one({
+        "user_id": user_id, "session_token": session_token,
+        "expires_at": expires, "created_at": datetime.now(timezone.utc)})
+    response.set_cookie(key="session_token", value=session_token, httponly=True,
+                        secure=True, samesite="none", path="/", max_age=7 * 24 * 3600)
+    return session_token
+
+
 # ---------------- Models ----------------
-class SessionIn(BaseModel):
-    session_id: str
+class RegisterIn(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
 
 
 class TrainerStyleIn(BaseModel):
@@ -221,45 +250,36 @@ async def seed_user_data(user_id: str, name: str, avatar: str):
 
 
 # ---------------- Auth routes ----------------
-@api.post("/auth/session")
-async def auth_session(body: SessionIn, response: Response):
-    try:
-        r = requests.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": body.session_id}, timeout=15)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid session_id")
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Invalid session_id")
-    data = r.json()
-    email = data.get("email")
-    name = data.get("name") or (email.split("@")[0] if email else "Atleta")
-    picture = data.get("picture") or "https://images.unsplash.com/photo-1568602471122-7832951cc4c5?w=200&h=200&fit=crop"
-    session_token = data["session_token"]
+@api.post("/auth/register")
+async def auth_register(body: RegisterIn, response: Response):
+    email = body.email.strip().lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="E-mail já cadastrado")
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    handle = "@" + email.split("@")[0]
+    name = body.name.strip() or handle.lstrip("@")
+    await db.users.insert_one({
+        "user_id": user_id, "email": email, "name": name, "handle": handle,
+        "avatar": "", "picture": "", "gym": DEFAULT_GYM,
+        "level": 1, "xp": 0, "xp_to_next": 1000, "combo_multiplier": 1.0,
+        "streak": 0, "joined_at": datetime.now(timezone.utc).strftime("%b %Y"),
+        "neon_color": "#7c5cff", "trainer_style": "t1",
+        "password_hash": hash_password(body.password),
+        "assessment_done": False,
+        "created_at": datetime.now(timezone.utc)})
+    await seed_user_data(user_id, name, "")
+    await _create_session(user_id, response)
+    return clean(await db.users.find_one({"user_id": user_id}, {"_id": 0}))
 
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
-    if existing:
-        user_id = existing["user_id"]
-        await db.users.update_one({"user_id": user_id}, {"$set": {"name": name, "avatar": picture, "picture": picture}})
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        handle = "@" + (email.split("@")[0] if email else "atleta")
-        await db.users.insert_one({
-            "user_id": user_id, "email": email, "name": name, "handle": handle,
-            "avatar": picture, "picture": picture, "gym": DEFAULT_GYM,
-            "level": 1, "xp": 0, "xp_to_next": 1000, "combo_multiplier": 1.0,
-            "streak": 0, "joined_at": datetime.now(timezone.utc).strftime("%b %Y"),
-            "neon_color": "#7c5cff", "trainer_style": "t1",
-            "created_at": datetime.now(timezone.utc)})
-        await seed_user_data(user_id, name, picture)
 
-    expires = datetime.now(timezone.utc) + timedelta(days=7)
-    await db.user_sessions.insert_one({
-        "user_id": user_id, "session_token": session_token,
-        "expires_at": expires, "created_at": datetime.now(timezone.utc)})
-
-    response.set_cookie(key="session_token", value=session_token, httponly=True,
-                        secure=True, samesite="none", path="/", max_age=7 * 24 * 3600)
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return user
+@api.post("/auth/login")
+async def auth_login(body: LoginIn, response: Response):
+    email = body.email.strip().lower()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not user.get("password_hash") or not verify_password(body.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="E-mail ou senha inválidos")
+    await _create_session(user["user_id"], response)
+    return clean(user)
 
 
 @api.get("/auth/me")
@@ -568,20 +588,22 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
         f"Responda SEMPRE em português (PT-BR), de forma prática, específica e concisa (máx ~120 palavras).\n"
         f"Histórico recente da conversa:\n{hist_txt}"
     )
-    if not LlmChat or not EMERGENT_LLM_KEY:
-        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure EMERGENT_LLM_KEY para habilitar o treinador IA.")
+    if not litellm or not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENAI_API_KEY para habilitar o treinador IA.")
     await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "user_id": u, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"coach_{u}_{uuid.uuid4().hex[:6]}", system_message=system).with_model("openai", "gpt-5.5")
 
     async def gen():
         full = ""
         try:
-            async for ev in chat.stream_message(UserMessage(text=body.message)):
-                if isinstance(ev, TextDelta):
-                    full += ev.content
-                    yield ev.content
-                elif isinstance(ev, StreamDone):
-                    break
+            stream = await litellm.acompletion(
+                model=OPENAI_MODEL, api_key=OPENAI_API_KEY, stream=True,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": body.message}],
+                max_tokens=400)
+            async for chunk in stream:
+                delta = getattr(chunk.choices[0].delta, "content", None) or ""
+                if delta:
+                    full += delta
+                    yield delta
         except Exception as e:
             logger.error(f"chat stream error: {e}")
             if not full:
@@ -594,8 +616,8 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
 
 @api.post("/workout/generate-plan")
 async def generate_plan(user=Depends(get_current_user)):
-    if not LlmChat or not EMERGENT_LLM_KEY:
-        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure EMERGENT_LLM_KEY para gerar planos.")
+    if not litellm or not OPENAI_API_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure OPENAI_API_KEY para gerar planos.")
     u = uid(user)
     profile = await db.fitness_profiles.find_one({"user_id": u}) or {}
     assess = await db.assessments.find_one({"user_id": u}) or {}
@@ -608,11 +630,13 @@ async def generate_plan(user=Depends(get_current_user)):
         '"focus": "grupo muscular · tipo", "duration": "~50 min", "exercises": [{"name": "...", "muscle": "...", "sets": 4, "reps": "8-10", "weight": 20}]}}\n'
         "O workout é o treino de hoje (dia 1) com 5 a 6 exercícios. O campo muscle deve ser um de: Peito, Costas, Perna, Ombro, Braço, Tríceps, Bíceps, Abdômen, Cardio. weight em kg adequado ao nível."
     )
-    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"plan_{u}_{uuid.uuid4().hex[:6]}",
-                   system_message="Você é um personal trainer especialista. Responda APENAS com JSON válido, sem markdown.").with_model("openai", "gpt-5.5")
     try:
-        resp = await chat.send_message(UserMessage(text=prompt))
-        txt = (resp if isinstance(resp, str) else str(resp)).strip()
+        resp = await litellm.acompletion(
+            model=OPENAI_MODEL, api_key=OPENAI_API_KEY,
+            messages=[{"role": "system", "content": "Você é um personal trainer especialista. Responda APENAS com JSON válido, sem markdown."},
+                      {"role": "user", "content": prompt}],
+            max_tokens=800)
+        txt = (resp.choices[0].message.content or "").strip()
         if txt.startswith("```"):
             txt = txt.split("```")[1]
             if txt.startswith("json"):
