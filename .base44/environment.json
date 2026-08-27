@@ -1,0 +1,12 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "EMERGENT_LLM_KEY",
+      "description": "API key for the emergentintegrations LLM (powers AI coach chat and AI workout-plan generation). Optional — app boots without it; AI endpoints return 503 until set. Obtain from the Emergent agent dashboard.",
+      "requiredAtBoot": false
+    }
+  ]
+}

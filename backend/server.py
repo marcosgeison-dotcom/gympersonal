@@ -12,7 +12,14 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from fastapi.responses import StreamingResponse
-from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+
+# emergentintegrations is a platform-provided AI integration package that is not
+# available in every environment. Import it lazily so the server boots without it;
+# the AI chat / plan-generation endpoints return 503 when it (or the LLM key) is absent.
+try:
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+except ImportError:
+    LlmChat = UserMessage = TextDelta = StreamDone = None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -561,6 +568,8 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
         f"Responda SEMPRE em português (PT-BR), de forma prática, específica e concisa (máx ~120 palavras).\n"
         f"Histórico recente da conversa:\n{hist_txt}"
     )
+    if not LlmChat or not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure EMERGENT_LLM_KEY para habilitar o treinador IA.")
     await db.chat_messages.insert_one({"id": str(uuid.uuid4()), "user_id": u, "role": "user", "text": body.message, "ts": datetime.now(timezone.utc).isoformat()})
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=f"coach_{u}_{uuid.uuid4().hex[:6]}", system_message=system).with_model("openai", "gpt-5.5")
 
@@ -585,6 +594,8 @@ async def chat_endpoint(body: ChatIn, user=Depends(get_current_user)):
 
 @api.post("/workout/generate-plan")
 async def generate_plan(user=Depends(get_current_user)):
+    if not LlmChat or not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=503, detail="Integração de IA indisponível. Configure EMERGENT_LLM_KEY para gerar planos.")
     u = uid(user)
     profile = await db.fitness_profiles.find_one({"user_id": u}) or {}
     assess = await db.assessments.find_one({"user_id": u}) or {}
